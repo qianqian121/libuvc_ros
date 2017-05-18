@@ -33,6 +33,7 @@
 *********************************************************************/
 #include "libuvc_camera/camera_driver.h"
 
+//#include <opencv/cv.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <std_msgs/Header.h>
@@ -129,7 +130,7 @@ void CameraDriver::ReconfigureCallback(UVCCameraConfig &new_config, uint32_t lev
     PARAM_INT(gain, gain, new_config.gain);
     PARAM_INT(iris_absolute, iris_abs, new_config.iris_absolute);
     PARAM_INT(brightness, brightness, new_config.brightness);
-    
+
 
     if (new_config.pan_absolute != config_.pan_absolute || new_config.tilt_absolute != config_.tilt_absolute) {
       if (uvc_set_pantilt_abs(devh_, new_config.pan_absolute, new_config.tilt_absolute)) {
@@ -156,6 +157,15 @@ void CameraDriver::ReconfigureCallback(UVCCameraConfig &new_config, uint32_t lev
   config_ = new_config;
 }
 
+//// clip portion of the image
+//static void crop(IplImage *src, IplImage *dst, CvRect rect)
+//{
+//  cvSetImageROI(src, rect);     // clip "rect" from "src" image
+//  cvCopy(src, dst);             // copy clipped portion to "dst"
+//  cvResetImageROI(src);         // reset cliping of "src"
+//}
+
+
 void CameraDriver::ImageCallback(uvc_frame_t *frame) {
   ros::Time timestamp = ros::Time(frame->capture_time.tv_sec, frame->capture_time.tv_usec);
 
@@ -168,7 +178,7 @@ void CameraDriver::ImageCallback(uvc_frame_t *frame) {
   image->width = config_.width;
   image->height = config_.height;
   image->step = image->width * 3;
-  image->data.resize(image->step * image->height);
+  image->data.resize(image->step * image->height / 2);
 
   if (frame->frame_format == UVC_FRAME_FORMAT_BGR){
     image->encoding = "bgr8";
@@ -187,7 +197,12 @@ void CameraDriver::ImageCallback(uvc_frame_t *frame) {
       return;
     }
     image->encoding = "bgr8";
-    memcpy(&(image->data[0]), rgb_frame_->data, rgb_frame_->data_bytes);
+//    memcpy(&(image->data[0]), rgb_frame_->data, rgb_frame_->data_bytes);&(rgb_frame_->data[i * image->step])
+      for (int i = 0; i < image->height; i++) {
+          memcpy(&(image->data[i * image->step / 2]), rgb_frame_->data + i * image->step, image->step / 2);
+      }
+      image->width /= 2;
+      image->step /= 2;
   } else if (frame->frame_format == UVC_FRAME_FORMAT_MJPEG) {
     // FIXME: uvc_any2bgr does not work on "mjpeg" format, so use uvc_mjpeg2rgb directly.
     uvc_error_t conv_ret = uvc_mjpeg2rgb(frame, rgb_frame_);
@@ -259,7 +274,7 @@ void CameraDriver::AutoControlsCallback(
       switch (selector) {
       case UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL:
         uint8_t *data_char = (uint8_t*) data;
-        config_.white_balance_temperature = 
+        config_.white_balance_temperature =
           data_char[0] | (data_char[1] << 8);
         config_changed_ = true;
         break;
