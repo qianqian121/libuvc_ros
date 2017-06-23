@@ -66,7 +66,8 @@ private:
   uvc_frame_t *rgb_frame_;
 
   image_transport::ImageTransport it_;
-  image_transport::CameraPublisher cam_pub_;
+  image_transport::CameraPublisher cam_right_pub_;
+  image_transport::CameraPublisher cam_left_pub_;
 
   dynamic_reconfigure::Server<UVCCameraConfig> config_server_;
   UVCCameraConfig config_;

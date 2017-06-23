@@ -51,7 +51,8 @@ CameraDriver::CameraDriver(ros::NodeHandle nh, ros::NodeHandle priv_nh)
     config_server_(mutex_, priv_nh_),
     config_changed_(false),
     cinfo_manager_(nh) {
-  cam_pub_ = it_.advertiseCamera("image_raw", 1, false);
+  cam_right_pub_ = it_.advertiseCamera("right/image_raw", 1, false);
+    cam_left_pub_ = it_.advertiseCamera("left/image_raw", 1, false);
 }
 
 CameraDriver::~CameraDriver() {
@@ -180,6 +181,12 @@ void CameraDriver::ImageCallback(uvc_frame_t *frame) {
   image->step = image->width * 3;
   image->data.resize(image->step * image->height / 2);
 
+    sensor_msgs::Image::Ptr image_left(new sensor_msgs::Image());
+//    image_left->width = config_.width;
+    image_left->height = config_.height;
+//    image_left->step = image->width * 3;
+    image_left->data.resize(image->step * image->height / 2);
+
   if (frame->frame_format == UVC_FRAME_FORMAT_BGR){
     image->encoding = "bgr8";
     memcpy(&(image->data[0]), frame->data, frame->data_bytes);
@@ -197,12 +204,16 @@ void CameraDriver::ImageCallback(uvc_frame_t *frame) {
       return;
     }
     image->encoding = "bgr8";
+      image_left->encoding = "bgr8";
 //    memcpy(&(image->data[0]), rgb_frame_->data, rgb_frame_->data_bytes);&(rgb_frame_->data[i * image->step])
       for (int i = 0; i < image->height; i++) {
-          memcpy(&(image->data[i * image->step / 2]), rgb_frame_->data + i * image->step, image->step / 2);
+          memcpy(&(image->data[i * image->step / 2]), rgb_frame_->data + i * image->step + image->step / 2, image->step / 2);
+          memcpy(&(image_left->data[i * image->step / 2]), rgb_frame_->data + i * image->step, image->step / 2);
       }
       image->width /= 2;
       image->step /= 2;
+      image_left->width = image->width;
+      image_left->step = image->step;
   } else if (frame->frame_format == UVC_FRAME_FORMAT_MJPEG) {
     // FIXME: uvc_any2bgr does not work on "mjpeg" format, so use uvc_mjpeg2rgb directly.
     uvc_error_t conv_ret = uvc_mjpeg2rgb(frame, rgb_frame_);
@@ -230,8 +241,11 @@ void CameraDriver::ImageCallback(uvc_frame_t *frame) {
   image->header.stamp = timestamp;
   cinfo->header.frame_id = config_.frame_id;
   cinfo->header.stamp = timestamp;
+    image_left->header.frame_id = config_.frame_id;
+    image_left->header.stamp = timestamp;
 
-  cam_pub_.publish(image, cinfo);
+  cam_right_pub_.publish(image, cinfo);
+  cam_left_pub_.publish(image_left, cinfo);
 
   if (config_changed_) {
     config_server_.updateConfig(config_);
